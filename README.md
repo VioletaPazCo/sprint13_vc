@@ -1,8 +1,8 @@
 # ⚡ Endolla Barcelona — Data & Governance Dashboard
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://b2g-endolla-barcelona-governance.streamlit.app)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://b2g-governance-endolla-bcn.streamlit.app)
 
-🚀 **Demo en vivo:** [b2g-endolla-barcelona-governance.streamlit.app](https://b2g-endolla-barcelona-governance.streamlit.app)
+🚀 **Demo en vivo:** [https://b2g-governance-endolla-bcn.streamlit.app](https://b2g-governance-endolla-bcn.streamlit.app)
 
 ---
 
