@@ -6,7 +6,9 @@ import plotly.graph_objects as go
 import folium
 from streamlit_folium import st_folium
 
-# Mapeo global de colores para tipos de conector
+from translations import t
+
+# Global color mapping for connector types
 CONNECTOR_COLOR_MAP = {
     'MENNEKES': '#6baed6',
     'Mennekes (AC)': '#6baed6',
@@ -19,9 +21,9 @@ CONNECTOR_COLOR_MAP = {
     'Unknown': '#7f7f7f'
 }
 
-# 1. Configuración de la página y CSS personalizado
+# 1. Page configuration and custom CSS
 st.set_page_config(
-    page_title="Endolla B2G — Gobernanza de Red",
+    page_title=t("app_title"),
     page_icon="🏛️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -46,10 +48,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("Gobernanza de Datos - Red ENDOLLA Barcelona (B2G)")
-st.markdown("Cuadro de mando para la gestión pública: monitorización de la integridad telemétrica, fallos de sensores y gobernanza de catálogos desincronizados.")
+st.title(t("header_title"))
+st.markdown(t("header_subtitle"))
 
-# 2. Carga de datos
+# 2. Data loading
 @st.cache_data
 def load_b2g_data():
     df_gold_metadata = pd.read_parquet("stations_metadata.parquet")
@@ -69,11 +71,11 @@ try:
     df_gold, df_active, df_orphans, df_epoch, df_desynced, df_orphaned_cat = load_b2g_data()
     is_data_loaded = True
 except Exception as loading_error:
-    st.error(f"Error al cargar los artefactos de producción: {loading_error}")
-    st.info("Verifica que los archivos .parquet necesarios se encuentren en el directorio raíz.")
+    st.error(f"Error loading production artifacts: {loading_error}")
+    st.info("Verify that necessary .parquet files exist in the root directory.")
     is_data_loaded = False
 
-# Funciones auxiliares
+# Helper functions
 def get_unique_ports_count(df):
     if df.empty or len(df.columns) == 0:
         return 0
@@ -115,7 +117,7 @@ def aggregate_other_layer_locations(df):
     grouped = df_valid.groupby([lat_col, lon_col]).agg(**agg_dict).reset_index(drop=True)
     return grouped
 
-# 3. Filtrado de Red Activa a la Ventana Deslizante (365 Días) & KPIs
+# 3. Active Network Filtering & KPIs
 if is_data_loaded:
     date_fact_col = 'event_timestamp' if 'event_timestamp' in df_active.columns else ('event_timestamp_dt' if 'event_timestamp_dt' in df_active.columns else None)
     
@@ -127,7 +129,6 @@ if is_data_loaded:
         port_last_seen = df_active.groupby('station_port_sk')[date_fact_col].max()
         active_ports_365_sk = port_last_seen[port_last_seen >= active_threshold_dt].index
         
-        # Ajuste horizonte temporal: Filtrar registros de la ventana activa de 365 días
         df_active_sane = df_active[
             (df_active['station_port_sk'].isin(active_ports_365_sk)) & 
             (df_active[date_fact_col] >= active_threshold_dt)
@@ -135,7 +136,7 @@ if is_data_loaded:
     else:
         df_active_sane = df_active.copy()
 
-    # Conteos oficiales
+    # Official counts
     active_ports_count = df_active_sane['station_port_sk'].nunique() if 'station_port_sk' in df_active_sane.columns else get_unique_ports_count(df_active_sane)
     total_historical_ports = df_active['station_port_sk'].nunique() if 'station_port_sk' in df_active.columns else active_ports_count
     
@@ -145,74 +146,78 @@ if is_data_loaded:
     epoch_events_count = len(df_epoch)
     desynced_ports_count = get_unique_ports_count(df_desynced)
 
-    # Render de Tarjetas KPI
+    # KPI Cards rendering
     col_active, col_orphan, col_epoch, col_desync = st.columns(4)
     
-    col_active.metric("🟢 Puertos Activos Sanos", f"{active_ports_count:,}")
-    col_active.markdown(f"<div class='kpi-card-subtext'>({active_ports_count / total_historical_ports * 100:.1f}% de {total_historical_ports:,} históricos)</div>", unsafe_allow_html=True)
+    pct_active = (active_ports_count / total_historical_ports * 100) if total_historical_ports > 0 else 0
+    col_active.metric(t("kpi_active"), f"{active_ports_count:,}")
+    col_active.markdown(f"<div class='kpi-card-subtext'>{t('kpi_active_sub', pct=pct_active, total=total_historical_ports)}</div>", unsafe_allow_html=True)
     
-    col_orphan.metric("🔴 Registros Huérfanos", f"{orphan_ports_count:,} puertos")
-    col_orphan.markdown(f"<div class='kpi-card-subtext'>({orphan_events_count:,} eventos en cuarentena)</div>", unsafe_allow_html=True)
+    col_orphan.metric(t("kpi_orphan"), f"{orphan_ports_count:,} ports")
+    col_orphan.markdown(f"<div class='kpi-card-subtext'>{t('kpi_orphan_sub', events=orphan_events_count)}</div>", unsafe_allow_html=True)
     
-    col_epoch.metric("⚙️ Fallos de Sensor Epoch", f"{epoch_ports_count:,} puertos")
-    col_epoch.markdown(f"<div class='kpi-card-subtext'>({epoch_events_count:,} eventos detectados)</div>", unsafe_allow_html=True)
+    col_epoch.metric(t("kpi_epoch"), f"{epoch_ports_count:,} ports")
+    col_epoch.markdown(f"<div class='kpi-card-subtext'>{t('kpi_epoch_sub', events=epoch_events_count)}</div>", unsafe_allow_html=True)
 
-    col_desync.metric("🟡 Gobernanza Desincronizada", f"{desynced_ports_count:,} puertos")
-    col_desync.markdown("<div class='kpi-card-subtext'>(Catálogo vs Telemetría Lag)</div>", unsafe_allow_html=True)
+    col_desync.metric(t("kpi_desync"), f"{desynced_ports_count:,} ports")
+    col_desync.markdown(f"<div class='kpi-card-subtext'>{t('kpi_desync_sub')}</div>", unsafe_allow_html=True)
 
-    # 4. Panel Lateral de Control (Sidebar)
-    st.sidebar.header("🔍 Filtros de Gobernanza")
+    # 4. Control Sidebar Panel
+    st.sidebar.header(t("sidebar_header"))
+    
+    layer_options = [
+        t("layer_active"),
+        t("layer_orphan"),
+        t("layer_epoch"),
+        t("layer_desync")
+    ]
+    
     selected_view_mode = st.sidebar.radio(
-        "Seleccione la Capa a Inspeccionar:",
-        [
-            "🟢 Red Activa Sana",
-            "🔴 Registros Telemétricos Huérfanos",
-            "⚙️ Fallos de Sensor Epoch",
-            "🟡 Activos Silenciosos (Desincronizados)"
-        ]
+        t("sidebar_radio_label"),
+        layer_options
     )
 
-    if "Red Activa Sana" in selected_view_mode:
+    if selected_view_mode == t("layer_active"):
         current_df = df_active_sane
         layer_color = "green"
-        layer_name = "Red Activa"
-        badge = "🟢 Activo / Sano"
-    elif "Registros Telemétricos Huérfanos" in selected_view_mode:
+        layer_name = t("lname_active")
+        badge = t("badge_active")
+    elif selected_view_mode == t("layer_orphan"):
         current_df = df_orphans
         layer_color = "red"
-        layer_name = "Registros Huérfanos"
-        badge = "🔴 Cuarentena / Huérfano"
-    elif "Fallos de Sensor Epoch" in selected_view_mode:
+        layer_name = t("lname_orphan")
+        badge = t("badge_orphan")
+    elif selected_view_mode == t("layer_epoch"):
         current_df = df_epoch
         layer_color = "purple"
-        layer_name = "Fallos Epoch"
-        badge = "⚙️ Fallo Epoch"
+        layer_name = t("lname_epoch")
+        badge = t("badge_epoch")
     else:
         current_df = df_desynced
         layer_color = "orange"
-        layer_name = "Gobernanza Desincronizada"
-        badge = "🟡 SKU Desincronizado / Lag"
+        layer_name = t("lname_desync")
+        badge = t("badge_desync")
 
-    st.subheader(f"Capa Visualización: {selected_view_mode}")
+    st.subheader(f"{t('layer_view_prefix')} {selected_view_mode}")
 
-    # 5. Banner de Resumen
-    temporal_range = "Sin registro temporal"
+    # 5. Summary Banner
+    temporal_range = t("banner_no_time")
     found_date_col = next((col for col in ['event_timestamp', 'event_timestamp_dt', 'port_last_updated', 'last_updated'] if col in current_df.columns), None) if not current_df.empty else None
     
     if found_date_col and not current_df.empty:
         try:
             time_series = pd.to_datetime(current_df[found_date_col], errors='coerce').dropna()
-            if "Registros Telemétricos Huérfanos" in selected_view_mode:
+            if selected_view_mode == t("layer_orphan"):
                 time_series = time_series[time_series >= "1971-01-01"]
                 
             if not time_series.empty:
                 min_date_str = time_series.min().strftime('%Y-%m-%d')
                 max_date_str = time_series.max().strftime('%Y-%m-%d')
-                temporal_range = f"{min_date_str} a {max_date_str}"
+                temporal_range = f"{min_date_str} to {max_date_str}"
         except Exception:
             pass
 
-    if "Red Activa Sana" in selected_view_mode:
+    if selected_view_mode == t("layer_active"):
         unique_locations = df_gold['location_id'].nunique() if 'location_id' in df_gold.columns else len(df_gold)
         unique_stations = current_df['station_id'].nunique() if 'station_id' in current_df.columns else "N/A"
         unique_ports = active_ports_count
@@ -228,30 +233,32 @@ if is_data_loaded:
             max_p = current_df['port_power_kw'].max()
             power_info = f"{min_p:.1f} kW / {med_p:.1f} kW / {max_p:.1f} kW"
 
+    scope_detail = t("banner_scope_detail", locations=unique_locations, stations=unique_stations, ports=unique_ports)
+
     st.markdown(
         f"""
         <div class="metric-banner">
-            <b>Resumen de la Capa Seleccionada ({layer_name}):</b><br>
-            • <b>Horizonte Temporal:</b> {temporal_range}<br>
-            • <b>Alcance Físico:</b> {unique_locations} Ubicaciones Únicas | {unique_stations} Estaciones | {unique_ports} Puertos Únicos<br>
-            • <b>Rango de Potencia (Mín / Mediana / Máx):</b> {power_info}
+            <b>{t('banner_title', layer_name=layer_name)}</b><br>
+            • <b>{t('banner_time')}</b> {temporal_range}<br>
+            • <b>{t('banner_scope')}</b> {scope_detail}<br>
+            • <b>{t('banner_power')}</b> {power_info}
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    # 6. Renderizado del Mapa Folium
-    st.markdown("### Mapa de Infraestructura")
+    # 6. Folium Map Rendering
+    st.markdown(t("map_title"))
     map_object = folium.Map(location=[41.3851, 2.1734], zoom_start=13, tiles="OpenStreetMap")
 
-    if "Red Activa Sana" in selected_view_mode:
+    if selected_view_mode == t("layer_active"):
         for idx, loc_row in df_gold.iterrows():
-            loc_address = loc_row.get('address_address_string', f"Ubicación ID: {loc_row.get('location_id')}")
+            loc_address = loc_row.get('address_address_string', f"Location ID: {loc_row.get('location_id')}")
             car_pts = int(loc_row.get('car_ports_count', 0))
             moto_pts = int(loc_row.get('moto_ports_count', 0))
             onstreet = loc_row.get('onstreet_location', True)
             
-            location_type_label = "Calle" if onstreet else "Parking"
+            location_type_label = t("map_street") if onstreet else t("map_parking")
             specific_icon = "tree" if onstreet else "parking"
             
             popup_html = f"""
@@ -260,8 +267,8 @@ if is_data_loaded:
                 <h4 style="margin: 4px 0 8px 0; color: #2C3E50; font-size: 13px;">{loc_address}</h4>
                 <hr style="border: 0; border-top: 1px solid #eee; margin: 5px 0;">
                 <ul style="padding-left: 15px; margin: 5px 0; font-size: 12px; color: #333;">
-                    <li><b>Coche:</b> {car_pts} puertos</li>
-                    <li><b>Moto:</b> {moto_pts} puertos</li>
+                    <li><b>{t('map_car_ports')}</b> {car_pts} {t('map_ports')}</li>
+                    <li><b>{t('map_moto_ports')}</b> {moto_pts} {t('map_ports')}</li>
                 </ul>
                 <div style="margin-top: 8px; padding: 4px; background-color: #f8f9fa; border-radius: 4px; text-align: center;">
                     <span style="font-size: 11px; font-weight: bold;">{badge}</span>
@@ -282,17 +289,17 @@ if is_data_loaded:
                 lat = loc_row['latitude']
                 lon = loc_row['longitude']
                 total_ports = int(loc_row['total_ports'])
-                address = loc_row.get('address', 'Ubicación sin dirección explícita')
+                address = loc_row.get('address', t('map_no_addr'))
                 
                 specific_icon = "tree"
-                location_type_label = "Calle / Auditoría"
+                location_type_label = t("map_audit")
                 
                 popup_html = f"""
                 <div style="font-family: Arial, sans-serif; width: 230px;">
                     <span style="font-size: 11px; color: #555; font-weight: bold; text-transform: uppercase;">{location_type_label}</span>
                     <p style="font-size: 12px; color: #2C3E50; font-weight: bold; margin: 4px 0;">{address}</p>
                     <hr style="border: 0; border-top: 1px solid #eee; margin: 5px 0;">
-                    <p style="font-size: 12px; color: #333; margin: 5px 0;"><b>Puertos Afectados:</b> {total_ports}</p>
+                    <p style="font-size: 12px; color: #333; margin: 5px 0;"><b>{t('map_affected_ports')}</b> {total_ports}</p>
                     <div style="margin-top: 8px; padding: 4px; background-color: #f8f9fa; border-radius: 4px; text-align: center;">
                         <span style="font-size: 11px; font-weight: bold;">{badge}</span>
                     </div>
@@ -303,23 +310,20 @@ if is_data_loaded:
                     location=[lat, lon],
                     popup=folium.Popup(popup_html, max_width=250),
                     icon=folium.Icon(color=layer_color, icon=specific_icon, prefix="fa"),
-                    tooltip=f"{address} — {total_ports} puertos"
+                    tooltip=f"{address} — {total_ports} {t('map_ports')}"
                 ).add_to(map_object)
 
     st_folium(map_object, width=None, use_container_width=True, height=500)
 
-# 7. Visualizaciones
-    if "Registros Telemétricos Huérfanos" not in selected_view_mode:
-        st.markdown("### Detalle de Atributos de Infraestructura")
+    # 7. Visualizations
+    if selected_view_mode != t("layer_orphan"):
+        st.markdown(t("infra_details_title"))
         
-        # Identificar la columna clave del puerto
         port_col = next((col for col in ['station_port_sk', 'port_id', 'port_sk'] if col in current_df.columns), current_df.columns[0] if not current_df.empty else None)
         
         if port_col and not current_df.empty:
-            # Deduplicar a nivel de puerto único activo
             df_ports_unique = current_df.drop_duplicates(subset=[port_col]).copy()
             
-            # Enriquecer atributos 'use_case' y 'onstreet_location' desde df_gold si no están presentes
             cols_to_merge = [c for c in ['use_case', 'onstreet_location'] if c in df_gold.columns and c not in df_ports_unique.columns]
             if cols_to_merge and 'location_id' in df_ports_unique.columns and 'location_id' in df_gold.columns:
                 df_ports_unique = df_ports_unique.merge(
@@ -328,26 +332,23 @@ if is_data_loaded:
                     how='left'
                 )
 
-            # Mapeo directo usando el atributo oficial 'use_case'
             def parse_use_case_attributes(row):
                 uc = str(row.get('use_case', ''))
                 
-                # 1. Clasificación por Ubicación
                 if 'Off-Street' in uc:
-                    location_type = 'Parking'
+                    location_type = t("val_parking")
                 elif 'On-Street' in uc:
-                    location_type = 'Calle'
+                    location_type = t("val_street")
                 else:
-                    location_type = 'Calle' if bool(row.get('onstreet_location', True)) else 'Parking'
+                    location_type = t("val_street") if bool(row.get('onstreet_location', True)) else t("val_parking")
                     
-                # 2. Clasificación por Tipo de Vehículo
                 if 'Moto' in uc:
-                    vehicle_type = 'Motocicleta'
+                    vehicle_type = t("val_motorcycle")
                 elif 'General' in uc:
-                    vehicle_type = 'Coche / VE'
+                    vehicle_type = t("val_car")
                 else:
                     conn = str(row.get('port_connector_type', '')).upper()
-                    vehicle_type = 'Motocicleta' if 'MOTO' in conn else 'Coche / VE'
+                    vehicle_type = t("val_motorcycle") if 'MOTO' in conn else t("val_car")
                     
                 return pd.Series([vehicle_type, location_type], index=['Tipo_Vehiculo', 'Tipo_Ubicacion'])
 
@@ -359,8 +360,15 @@ if is_data_loaded:
 
         with row1_col1:
             if not df_ports_unique.empty:
-                # Resumen con conteo exacto de puertos únicos
                 uc_summary = df_ports_unique.groupby(['Tipo_Vehiculo', 'Tipo_Ubicacion']).size().reset_index(name='Puertos_Unicos')
+
+                color_map = {
+                    t("val_parking"): '#1E40AF', 
+                    t("val_street"): '#10B981',
+                    'Parking': '#1E40AF',
+                    'Calle': '#10B981',
+                    'On-Street': '#10B981'
+                }
 
                 fig_uc = px.bar(
                     uc_summary, 
@@ -368,9 +376,13 @@ if is_data_loaded:
                     y='Puertos_Unicos', 
                     color='Tipo_Ubicacion',
                     barmode='group', 
-                    title="<b>Casos de uso (Puertos Únicos)</b>",
-                    color_discrete_map={'Parking': '#1E40AF', 'Calle': '#10B981'},
-                    labels={'Puertos_Unicos': 'Puertos Únicos', 'Tipo_Vehiculo': ''},
+                    title=t("chart_uc_title"),
+                    color_discrete_map=color_map,
+                    labels={
+                        'Puertos_Unicos': t("chart_uc_y"), 
+                        'Tipo_Vehiculo': '',
+                        'Tipo_Ubicacion': t("chart_legend_loc_type")
+                    },
                     text_auto=True
                 )
                 fig_uc.update_traces(textposition='outside')
@@ -381,7 +393,7 @@ if is_data_loaded:
                     showline=True, 
                     linewidth=1, 
                     linecolor='black', 
-                    title="Puertos Únicos",
+                    title=t("chart_uc_y"),
                     title_font=dict(color='black')
                 )
                 fig_uc.update_layout(
@@ -393,7 +405,7 @@ if is_data_loaded:
                 )
                 st.plotly_chart(fig_uc, use_container_width=True)
             else:
-                st.info("Sin datos o atributos de caso de uso disponibles para esta capa.")
+                st.info(t("info_no_uc"))
 
         with row1_col2:
             conn_col = next((c for c in ['port_connector_type', 'connector_type'] if c in df_ports_unique.columns), None)
@@ -406,12 +418,12 @@ if is_data_loaded:
                     connector_counts, 
                     names='Tipo_Conector', 
                     values='Cantidad', 
-                    title="<b>Puertos Únicos por Tipo de Conector</b>", 
+                    title=t("chart_pie_title"), 
                     hole=0.4,
                     color='Tipo_Conector', 
                     color_discrete_map=CONNECTOR_COLOR_MAP
                 )
-                fig_pie.update_traces(hovertemplate="<b>%{label}</b><br>Puertos: %{value}<br>Cuota: %{percent}<extra></extra>")
+                fig_pie.update_traces(hovertemplate=t("chart_pie_hover"))
                 fig_pie.update_layout(
                     margin=dict(l=10, r=10, t=50, b=20),
                     height=350,
@@ -421,13 +433,12 @@ if is_data_loaded:
                 )
                 st.plotly_chart(fig_pie, use_container_width=True)
             else:
-                st.info("ℹ️ Tipos de conector no disponibles para esta capa.")
+                st.info(t("info_no_conn"))
 
-
-# Destalle de potencia por tipo de conector (Exclusivo de Red Activa Sana)
-    if "Red Activa Sana" in selected_view_mode:
+    # Power breakdown by connector type (Healthy Active Network exclusive)
+    if selected_view_mode == t("layer_active"):
         st.markdown("---")
-        st.subheader("3.3. Distribución de Puertos por Conector y Potencia Nominal")
+        st.subheader(t("power_dist_title"))
 
         port_col = 'station_port_sk' if 'station_port_sk' in df_active_sane.columns else df_active_sane.columns[0]
         power_col = next((c for c in ['port_power_kw', 'power_kw', 'max_power_kw'] if c in df_active_sane.columns), None)
@@ -438,7 +449,6 @@ if is_data_loaded:
 
             def standardize_power(kw):
                 try:
-                    # Ajuste 1: Redondeo a 2 decimales
                     val = round(float(kw), 2)
                     if val in [3.20, 3.60, 3.68]:
                         return '3.6 kW'
@@ -453,14 +463,12 @@ if is_data_loaded:
                     else:
                         return f'{val} kW'
                 except (ValueError, TypeError):
-                    return 'Desconocido'
+                    return t("val_unknown")
 
             df_active_ports['power_clean'] = df_active_ports[power_col].apply(standardize_power)
 
-            # Cálculo de totales por conector para ordenar de mayor a menor
             conn_totals = df_active_ports.groupby(connector_col).size().reset_index(name='total')
             connector_order = conn_totals.sort_values(by='total', ascending=True)[connector_col].tolist()
-
             power_category_order = ['3.6 kW', '7.2 kW', '22.0 kW', '50.0 kW', '43-44 kW']
 
             fig_power_conn_clean = px.histogram(
@@ -473,9 +481,9 @@ if is_data_loaded:
                     'power_clean': power_category_order
                 },
                 labels={
-                    connector_col: 'Tipo de Conector', 
+                    connector_col: t("chart_power_conn"), 
                     'count': '', 
-                    'power_clean': 'Potencia Instalada'
+                    'power_clean': t("chart_power_label")
                 },
                 color_discrete_map={
                     '3.6 kW': '#1f77b4',
@@ -505,7 +513,7 @@ if is_data_loaded:
                 height=380,
                 margin=dict(t=20, l=40, r=160, b=40),
                 legend=dict(
-                    title=dict(text="Potencia Nominal", font=dict(size=12, color="black")),
+                    title=dict(text=t("chart_power_legend"), font=dict(size=12, color="black")),
                     font=dict(color="black", size=12),
                     bgcolor="white", 
                     bordercolor="rgba(0,0,0,0.2)", 
@@ -522,33 +530,33 @@ if is_data_loaded:
                 linecolor="black", showline=True
             )
             fig_power_conn_clean.update_yaxes(
-                title=dict(text="Tipo de Conector", font=dict(size=14, color="black")), 
+                title=dict(text=t("chart_power_conn"), font=dict(size=14, color="black")), 
                 tickfont=dict(size=12, color="black"), 
                 linecolor="black", showline=True
             )
 
             st.plotly_chart(fig_power_conn_clean, use_container_width=True)
 
-    # 8. Top Ubicaciones Afectadas
-    if "Red Activa Sana" not in selected_view_mode:
+    # 8. Top Affected Locations
+    if selected_view_mode != t("layer_active"):
         st.markdown("---")
-        st.markdown("### Análisis de Afectación por Ubicación")
+        st.markdown(t("top_loc_title"))
         if not current_df.empty and 'location_id' in current_df.columns:
             top_locs = current_df['location_id'].value_counts().head(10).reset_index()
             top_locs.columns = ['ID_Ubicacion', 'Total_Registros']
-            top_locs['ID_Ubicacion'] = "Ubicación " + top_locs['ID_Ubicacion'].astype(str)
+            top_locs['ID_Ubicacion'] = t("top_loc_prefix") + top_locs['ID_Ubicacion'].astype(str)
             top_locs = top_locs.iloc[::-1]
 
             fig_top_loc = px.bar(
                 top_locs, x='Total_Registros', y='ID_Ubicacion', orientation='h',
-                title=f"<b>Top 10 Ubicaciones Afectadas ({layer_name})</b>",
+                title=t("top_loc_chart_title", layer_name=layer_name),
                 color_discrete_sequence=['#e74c3c' if layer_color == 'red' else ('#f39c12' if layer_color == 'orange' else '#9b59b6')],
                 labels={'ID_Ubicacion': ''},
                 text_auto=True
             )
             fig_top_loc.update_traces(textposition='outside')
             fig_top_loc.update_xaxes(
-                title="Total de Registros",
+                title=t("top_loc_x_title"),
                 title_font=dict(color='black', size=12),
                 showline=True, 
                 showticklabels=False,
@@ -568,10 +576,10 @@ if is_data_loaded:
             )
             st.plotly_chart(fig_top_loc, use_container_width=True)
 
-    # 9. Auditoría de Eventos Huérfanos
-    if "Registros Telemétricos Huérfanos" in selected_view_mode and not current_df.empty:
+    # 9. Orphan Events Audit
+    if selected_view_mode == t("layer_orphan") and not current_df.empty:
         st.markdown("---")
-        st.markdown("### Auditoría de Causa Raíz (Cuarentena)")
+        st.markdown(t("audit_title"))
         
         df_audit = current_df.copy()
         case_col = 'quarantine_audit_case' if 'quarantine_audit_case' in df_audit.columns else 'orphan_reason'
@@ -584,58 +592,58 @@ if is_data_loaded:
                     unique_ports=('station_port_sk' if 'station_port_sk' in df_audit.columns else df_audit.columns[0], 'nunique')
                 )
                 .reset_index()
-                .rename(columns={case_col: 'Caso de Auditoría / Causa Raíz'})
+                .rename(columns={case_col: t('col_audit_case')})
                 .sort_values(by='event_count', ascending=False)
             )
             
             total_events = len(df_audit)
-            audit_summary['Porcentaje (%)'] = (audit_summary['event_count'] / total_events) * 100
-            audit_summary['Estado en Mapa'] = audit_summary['Caso de Auditoría / Causa Raíz'].apply(
-                lambda x: 'No (Coordenadas no mapeadas)' if str(x).startswith('Case C') else '✅ Sí (Geolocalizado)'
+            audit_summary[t('col_pct')] = (audit_summary['event_count'] / total_events) * 100
+            audit_summary[t('col_map_status')] = audit_summary[t('col_audit_case')].apply(
+                lambda x: t('status_map_no') if str(x).startswith('Case C') else t('status_map_yes')
             )
             
             audit_summary = audit_summary[[
-                'Caso de Auditoría / Causa Raíz',
+                t('col_audit_case'),
                 'event_count',
-                'Porcentaje (%)',
-                'Estado en Mapa',
+                t('col_pct'),
+                t('col_map_status'),
                 'unique_ports'
             ]].rename(columns={
-                'event_count': 'Eventos Totales',
-                'unique_ports': 'Puertos Afectados'
+                'event_count': t('col_total_events'),
+                'unique_ports': t('col_affected_ports')
             })
 
-            st.markdown("#### Tabla Resumen de Cuarentena")
+            st.markdown(t("audit_table_title"))
             st.dataframe(
                 audit_summary.style.format({
-                    'Eventos Totales': '{:,}',
-                    'Porcentaje (%)': '{:.2f}%',
-                    'Puertos Afectados': '{:,}'
+                    t('col_total_events'): '{:,}',
+                    t('col_pct'): '{:.2f}%',
+                    t('col_affected_ports'): '{:,}'
                 }),
                 use_container_width=True,
                 hide_index=True
             )
 
-            st.markdown("<br>**Desglose Agrupado por Causa Raíz**", unsafe_allow_html=True)
+            st.markdown(t("audit_breakdown_header"), unsafe_allow_html=True)
             unique_cases = sorted(df_audit[case_col].unique())
             
             tab_titles = []
             for c in unique_cases:
                 if "Case A" in c:
-                    tab_titles.append("📌 Caso A: Estación Válida | Puerto no Registrado")
+                    tab_titles.append(t("tab_case_a"))
                 elif "Case B" in c:
-                    tab_titles.append("📌 Caso B: Ubicación Válida | Estación y Puerto no Registrados")
+                    tab_titles.append(t("tab_case_b"))
                 elif "Case C" in c:
-                    tab_titles.append("📌 Caso C: Coordenadas No Mapeadas")
+                    tab_titles.append(t("tab_case_c"))
                 else:
                     tab_titles.append(f"📌 {c}")
                     
             tabs = st.tabs(tab_titles)
             
             case_descriptions = {
-                "Case A": "**Diagnóstico:** La ubicación y estación existen en el catálogo maestro, pero la telemetría emite valores de `port_id` no registrados.",
-                "Case B": "**Diagnóstico:** La ubicación física existe en el catálogo, pero los IDs de estación y puerto no están registrados en el inventario activo.",
-                "Case C": "**Diagnóstico:** Eventos emitidos con IDs de ubicación/estación inexistentes o coordenadas geográficas inválidas."
+                "Case A": t("desc_case_a"),
+                "Case B": t("desc_case_b"),
+                "Case C": t("desc_case_c")
             }
 
             for tab, case_name in zip(tabs, unique_cases):
@@ -647,9 +655,9 @@ if is_data_loaded:
                         st.info(case_descriptions[desc_key])
                     
                     m_col1, m_col2, m_col3 = st.columns(3)
-                    m_col1.metric("Eventos Afectados", f"{len(df_case):,}")
-                    m_col2.metric("Estaciones Involucradas", f"{df_case['station_id'].nunique() if 'station_id' in df_case.columns else 'N/A'}")
-                    m_col3.metric("Ubicaciones Involucradas", f"{df_case['location_id'].nunique() if 'location_id' in df_case.columns else 'N/A'}")
+                    m_col1.metric(t("metric_affected_events"), f"{len(df_case):,}")
+                    m_col2.metric(t("metric_stations_involved"), f"{df_case['station_id'].nunique() if 'station_id' in df_case.columns else 'N/A'}")
+                    m_col3.metric(t("metric_locations_involved"), f"{df_case['location_id'].nunique() if 'location_id' in df_case.columns else 'N/A'}")
                     
                     case_grouped = df_case.groupby(['location_id', 'station_id']).agg(
                         quarantine_emitted_ports=('port_id', lambda x: sorted(list(set(str(p) for p in x.dropna())))),
@@ -659,11 +667,11 @@ if is_data_loaded:
                     case_grouped['quarantine_emitted_ports'] = case_grouped['quarantine_emitted_ports'].astype(str)
                     
                     case_grouped = case_grouped.rename(columns={
-                        'location_id': 'ID Ubicación',
-                        'station_id': 'ID Estación',
-                        'quarantine_emitted_ports': 'Puertos Emitidos en Cuarentena',
-                        'quarantine_events': 'Eventos Totales'
-                    }).sort_values(by='Eventos Totales', ascending=False)
+                        'location_id': t('tbl_loc_id'),
+                        'station_id': t('tbl_station_id'),
+                        'quarantine_emitted_ports': t('tbl_emitted_ports'),
+                        'quarantine_events': t('tbl_total_events')
+                    }).sort_values(by=t('tbl_total_events'), ascending=False)
 
                     st.dataframe(
                         case_grouped,
@@ -671,10 +679,10 @@ if is_data_loaded:
                         hide_index=True
                     )
 
-    # 10. Auditoría para Gobernanza Desincronizada
-    if "Activos Silenciosos" in selected_view_mode and not current_df.empty:
+    # 10. Audit for Desynchronized Governance
+    if selected_view_mode == t("layer_desync") and not current_df.empty:
         st.markdown("---")
-        st.markdown("### Auditoría de Causa Raíz — Activos Silenciosos / Desincronizados")
+        st.markdown(t("desync_audit_title"))
         
         drilldown_cols = [
             'location_id', 'station_id', 'port_id', 'station_port_sk', 
