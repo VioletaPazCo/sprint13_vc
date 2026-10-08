@@ -24,7 +24,8 @@ TEXTS = {
         "kpi_epoch_sub": "({events:,} eventos detectados)",
         "kpi_desync": "🟡 Gobernanza Desincronizada",
         "kpi_desync_sub": "(Catálogo vs Telemetría Lag)",
-        
+        "unit_ports": "puertos",
+
         # --- Sidebar ---
         "sidebar_header": "🔍 Filtros de Gobernanza",
         "sidebar_radio_label": "Seleccione la Capa a Inspeccionar:",
@@ -268,6 +269,7 @@ TEXTS = {
         "kpi_epoch_sub": "({events:,} events detected)",
         "kpi_desync": "🟡 Desynchronized Governance",
         "kpi_desync_sub": "(Catalog vs Telemetry Lag)",
+        "unit_ports": "ports",
         
         # --- Sidebar ---
         "sidebar_header": "🔍 Governance Filters",
