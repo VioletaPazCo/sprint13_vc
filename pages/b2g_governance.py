@@ -153,13 +153,13 @@ if is_data_loaded:
     col_active.metric(t("kpi_active"), f"{active_ports_count:,}")
     col_active.markdown(f"<div class='kpi-card-subtext'>{t('kpi_active_sub', pct=pct_active, total=total_historical_ports)}</div>", unsafe_allow_html=True)
     
-    col_orphan.metric(t("kpi_orphan"), f"{orphan_ports_count:,} ports")
+    col_orphan.metric(t("kpi_orphan"), f"{orphan_ports_count:,} {t('unit_ports')}")
     col_orphan.markdown(f"<div class='kpi-card-subtext'>{t('kpi_orphan_sub', events=orphan_events_count)}</div>", unsafe_allow_html=True)
     
-    col_epoch.metric(t("kpi_epoch"), f"{epoch_ports_count:,} ports")
+    col_epoch.metric(t("kpi_epoch"), f"{epoch_ports_count:,} {t('unit_ports')}")
     col_epoch.markdown(f"<div class='kpi-card-subtext'>{t('kpi_epoch_sub', events=epoch_events_count)}</div>", unsafe_allow_html=True)
 
-    col_desync.metric(t("kpi_desync"), f"{desynced_ports_count:,} ports")
+    col_desync.metric(t("kpi_desync"), f"{desynced_ports_count:,} {t('unit_ports')}")
     col_desync.markdown(f"<div class='kpi-card-subtext'>{t('kpi_desync_sub')}</div>", unsafe_allow_html=True)
 
     # 4. Control Sidebar Panel
